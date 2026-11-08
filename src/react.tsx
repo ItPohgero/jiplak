@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { pickCapture, type Bones, type Theme } from './core.js'
+import { pickCapture, type Bones, type Capture, type Theme } from './core.js'
 import { snapshot, type SnapshotOptions } from './snapshot.js'
 
 export type { Bone, Bones, Capture, Theme, Animate } from './core.js'
@@ -12,6 +12,8 @@ declare global {
   interface Window {
     __JIPLAK_BUILD?: boolean
     __JIPLAK_SNAPSHOT?: typeof snapshot
+    /** Last shape of each skeleton seen during capture, kept after it unmounts. */
+    __JIPLAK_SEEN?: Record<string, Capture>
   }
 }
 
@@ -62,7 +64,17 @@ export function Skeleton({ name, loading, children, fixture, bones, options, cla
 
   useEffect(() => {
     const el = ref.current
-    if (!el || isBuild) return
+    if (!el) return
+    if (isBuild) {
+      // A parent may hide this skeleton once data arrives (an empty list, a
+      // finished step). Keep re-measuring so the CLI still gets its last shape.
+      const save = () => {
+        if (el.isConnected) (window.__JIPLAK_SEEN ??= {})[name] = snapshot(el, options)
+      }
+      save()
+      const timer = setInterval(save, 250)
+      return () => clearInterval(timer)
+    }
     const ro = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)))
     ro.observe(el)
     const checkDark = () => setDark(!!el.closest('.dark'))

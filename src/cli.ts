@@ -57,9 +57,11 @@ const context = await browser.newContext()
 await context.addInitScript(() => {
   window.__JIPLAK_BUILD = true
 })
-if (config.cookies.length > 0) {
+// JIPLAK_COOKIES ("a=1; b=2", as copied from a Cookie header) keeps session cookies out of the repo.
+const cookies = [...config.cookies, ...(process.env.JIPLAK_COOKIES ?? '').split(';').map(c => c.trim()).filter(c => c.includes('='))]
+if (cookies.length > 0) {
   await context.addCookies(
-    config.cookies.map(c => {
+    cookies.map(c => {
       const i = c.indexOf('=')
       return { name: c.slice(0, i), value: c.slice(i + 1), url: origin }
     }),
@@ -100,7 +102,8 @@ try {
       const found = await page.evaluate(() => {
         const snap = window.__JIPLAK_SNAPSHOT
         if (!snap) return null
-        const result: Record<string, Capture> = {}
+        // Live DOM wins; skeletons that already unmounted fall back to their last seen shape.
+        const result: Record<string, Capture> = { ...window.__JIPLAK_SEEN }
         for (const el of document.querySelectorAll<HTMLElement>('[data-jiplak]')) {
           const opts: SnapshotOptions = el.dataset.jiplakOptions ? JSON.parse(el.dataset.jiplakOptions) : {}
           result[el.dataset.jiplak!] = snap(el, opts)

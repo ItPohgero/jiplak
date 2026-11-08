@@ -200,12 +200,14 @@ maxPages: 200
 <details>
 <summary><b>Halaman saya butuh login.</b></summary>
 
-Kirim cookie sesi:
+Login ke aplikasi di browser, salin cookie sesi, lalu kirim lewat environment
+supaya tidak pernah masuk repo:
 
-```yaml
-cookies:
-  - session=isi-cookie-kamu
+```bash
+JIPLAK_COOKIES="session=isi-cookie-kamu" npx jiplak build
 ```
+
+Beberapa cookie memakai format header Cookie: `"a=1; b=2"`.
 
 </details>
 
@@ -242,7 +244,7 @@ breakpoints: [375, 768, 1280]    # lebar layar yang dipotret
 out: ./src/bones                 # folder hasil
 wait: 800                        # jeda (ms) setelah halaman dimuat
 channel: chrome                  # opsional: pakai Chrome yang terpasang
-cookies: []                      # opsional: name=value
+cookies: []                      # opsional: name=value (lebih aman pakai env JIPLAK_COOKIES)
 
 # tampilan (props di <Skeleton> menimpa nilai ini)
 animate: pulse                   # pulse | shimmer | solid

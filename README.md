@@ -201,12 +201,14 @@ maxPages: 200
 <details>
 <summary><b>My pages need a login.</b></summary>
 
-Send a session cookie:
+Sign in to your app in a browser, copy the session cookie, and pass it through
+the environment so it never lands in the repo:
 
-```yaml
-cookies:
-  - session=your-session-cookie
+```bash
+JIPLAK_COOKIES="session=your-session-cookie" npx jiplak build
 ```
+
+Several cookies use the Cookie header format: `"a=1; b=2"`.
 
 </details>
 
@@ -243,7 +245,7 @@ breakpoints: [375, 768, 1280]    # screen widths to capture
 out: ./src/bones                 # output folder
 wait: 800                        # ms to wait after page load
 channel: chrome                  # optional: use installed Chrome
-cookies: []                      # optional: name=value
+cookies: []                      # optional: name=value (prefer the JIPLAK_COOKIES env var)
 
 # look (props on <Skeleton> override these)
 animate: pulse                   # pulse | shimmer | solid

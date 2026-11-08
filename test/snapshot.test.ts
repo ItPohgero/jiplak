@@ -13,6 +13,7 @@ const CASES = `
   <div id="clipped"><div style="width:64px;height:64px;border-radius:8px;overflow:hidden"><img style="display:block;width:64px;height:64px;background:#ccc"></div></div>
   <div id="circle"><img style="display:block;width:40px;height:40px;border-radius:9999px;background:#ccc"></div>
   <div id="divider"><div style="height:1px;background:#ddd"></div><div style="height:20px"></div></div>
+  <div id="rowline"><div style="border-bottom:2px solid #ddd;border-radius:14px 14px 0 0;padding:8px"><span>Row</span></div></div>
   <div id="card"><div style="background:#eee;border-radius:12px;padding:8px"><span>Card</span></div></div>
   <div id="outline"><div style="border:1px solid #ddd;padding:8px"><span>Box</span></div></div>
   <div id="mixed"><a href="#">Title <svg width="16" height="16"></svg></a></div>
@@ -56,6 +57,12 @@ describe('snapshot', () => {
 
   test('empty painted box is a block, empty unpainted box is nothing', async () => {
     expect((await snap('divider')).bones).toEqual([[0, 0, 100, 1, 0]])
+  })
+
+  test('a border on one side is a line, not a box', async () => {
+    const { bones } = await snap('rowline')
+    expect(bones[0]).toEqual([0, 40, 100, 2, 0, 1]) // 8 + 24 + 8 px above the border
+    expect(bones).toHaveLength(2) // line + text
   })
 
   test('cards become surfaces behind their content', async () => {

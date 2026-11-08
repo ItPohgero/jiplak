@@ -127,13 +127,30 @@ export function snapshot(root: Element, options: SnapshotOptions = {}): Capture 
     }
     const ownBg = style.backgroundColor
     const filled = (!clear(ownBg) && ownBg !== bg) || style.backgroundImage !== 'none'
-    const outlined = ['Top', 'Right', 'Bottom', 'Left'].some(side => {
-      const width = parseFloat(style.getPropertyValue(`border-${side.toLowerCase()}-width`))
-      return width > 0 && !clear(style.getPropertyValue(`border-${side.toLowerCase()}-color`))
+    const sides = (['top', 'right', 'bottom', 'left'] as const).filter(side => {
+      const width = parseFloat(style.getPropertyValue(`border-${side}-width`))
+      return width > 0 && !clear(style.getPropertyValue(`border-${side}-color`))
     })
+    const outlined = sides.length === 4
     const hasContent = [...el.childNodes].some(n => n.nodeType === 1 || (n.nodeType === 3 && n.textContent?.trim()))
+    if (box && !filled && !outlined) {
+      // A border on some sides only (a row divider) is drawn as those lines, not as a box.
+      for (const side of sides) {
+        const w = parseFloat(style.getPropertyValue(`border-${side}-width`))
+        const line = intersect(
+          {
+            left: side === 'right' ? box.right - w : box.left,
+            top: side === 'bottom' ? box.bottom - w : box.top,
+            right: side === 'left' ? box.left + w : box.right,
+            bottom: side === 'top' ? box.top + w : box.bottom,
+          },
+          clip,
+        )
+        if (line) surfaces.push(bone(line, 0, 1))
+      }
+    }
     if (!hasContent) {
-      // An empty painted box is visible content on its own: a divider, a dot, a cover image.
+      // An empty painted box is visible content on its own: a dot, a swatch, a cover image.
       if (box && (filled || outlined)) blocks.push(bone(box, radius(el, root)))
       return
     }
