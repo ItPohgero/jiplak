@@ -1,62 +1,160 @@
-import type { Bone, Capture } from './core.js'
+import type { Bone, Capture, Kind } from './core.js'
 
 /** Per-skeleton capture tuning, passed as `<Skeleton options>`. */
 export interface SnapshotOptions {
-  /** Extra tags captured as one bone while they hold only inline content. */
+  /** Tags captured as one solid block instead of being walked (e.g. a chart wrapper). */
   leafTags?: string[]
   /** CSS selectors skipped together with their descendants. */
   exclude?: string[]
 }
 
-const LEAF_TAGS = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'td', 'th', 'label']
-const ATOMIC = new Set(['img', 'svg', 'video', 'canvas', 'picture', 'input', 'button', 'textarea', 'select'])
-
-const pct = (v: number, total: number) => (total > 0 ? +((v / total) * 100).toFixed(3) : 0)
-
-function visible(el: Element) {
-  const s = getComputedStyle(el)
-  return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0'
+interface Box {
+  left: number
+  top: number
+  right: number
+  bottom: number
 }
 
-function radius(el: Element, rect: DOMRect, tag: string): number | string {
-  const square = Math.abs(rect.width - rect.height) < 4
-  const s = getComputedStyle(el)
-  const r = parseFloat(s.borderTopLeftRadius) || 0
-  if (r === 0) return square && ATOMIC.has(tag) && tag !== 'input' && tag !== 'button' ? '50%' : 6
-  if (s.borderRadius.includes('%') || r >= Math.min(rect.width, rect.height) / 2) return square ? '50%' : 9999
-  return s.borderRadius
+/** Replaced or interactive elements whose whole box is the placeholder. */
+const ATOMIC = new Set([
+  'img', 'svg', 'video', 'canvas', 'picture', 'iframe', 'object',
+  'input', 'button', 'textarea', 'select', 'progress', 'meter',
+])
+const TEXT_RADIUS = 4
+const NO_CLIP: Box = { left: -Infinity, top: -Infinity, right: Infinity, bottom: Infinity }
+
+const clear = (color: string) => color === 'transparent' || /^rgba\(.*,\s*0\)$/.test(color)
+
+function intersect(a: Box, b: Box): Box | null {
+  const box = {
+    left: Math.max(a.left, b.left),
+    top: Math.max(a.top, b.top),
+    right: Math.min(a.right, b.right),
+    bottom: Math.min(a.bottom, b.bottom),
+  }
+  return box.right - box.left >= 1 && box.bottom - box.top >= 1 ? box : null
+}
+
+/** Radius as the eye sees it: an unrounded child takes the radius of the same-size parent that clips it. */
+function radius(el: Element, root: Element): number | string {
+  const rect = el.getBoundingClientRect()
+  let style = getComputedStyle(el)
+  let node = el
+  while (parseFloat(style.borderTopLeftRadius) === 0 && node.parentElement && node.parentElement !== root) {
+    const parent = node.parentElement
+    const pr = parent.getBoundingClientRect()
+    const ps = getComputedStyle(parent)
+    if (ps.overflow === 'visible' || Math.abs(pr.width - rect.width) > 2 || Math.abs(pr.height - rect.height) > 2) break
+    node = parent
+    style = ps
+  }
+  const r = parseFloat(style.borderTopLeftRadius) || 0
+  if (r === 0) return 0
+  const square = Math.abs(rect.width - rect.height) < 2
+  if (style.borderRadius.includes('%') || r >= Math.min(rect.width, rect.height) / 2) return square ? '50%' : 9999
+  return style.borderRadius
+}
+
+/** Background colour the element sits on, so wrappers painted the same colour are not treated as cards. */
+function backdrop(el: Element): string {
+  for (let node: Element | null = el; node; node = node.parentElement) {
+    const bg = getComputedStyle(node).backgroundColor
+    if (!clear(bg)) return bg
+  }
+  return 'rgb(255, 255, 255)'
+}
+
+/** Join text fragments on one line (a label split across spans) into one bar. */
+function mergeLines(lines: Box[]): Box[] {
+  const sorted = [...lines].sort((a, b) => a.top - b.top || a.left - b.left)
+  const out: Box[] = []
+  for (const box of sorted) {
+    const last = out[out.length - 1]
+    const sameLine = last && Math.abs(last.top - box.top) <= 2 && Math.abs(last.bottom - box.bottom) <= 3
+    if (sameLine && box.left - last.right <= 8) {
+      last.right = Math.max(last.right, box.right)
+      last.top = Math.min(last.top, box.top)
+      last.bottom = Math.max(last.bottom, box.bottom)
+    } else out.push({ ...box })
+  }
+  return out
 }
 
 /**
- * Walk the rendered children of `root` and record every visible leaf
- * (text block, media, form control, childless element) as a bone.
+ * Record the visible shape of everything inside `root`: every line of text as
+ * its own bar (measured from the glyphs, not the element box), media and form
+ * controls as blocks, and cards/panels as surfaces drawn behind them.
  */
 export function snapshot(root: Element, options: SnapshotOptions = {}): Capture {
   const base = root.getBoundingClientRect()
-  const leafTags = new Set([...LEAF_TAGS, ...(options.leafTags ?? [])])
+  const leafTags = new Set(options.leafTags ?? [])
   const exclude = options.exclude?.join(',')
-  const bones: Bone[] = []
+  const surfaces: Bone[] = []
+  const blocks: Bone[] = []
+  const lines: Box[] = []
 
-  const walk = (el: Element) => {
-    if (!visible(el) || (exclude && el.matches(exclude))) return
-    const tag = el.tagName.toLowerCase()
-    const kids = [...el.children].filter(visible)
-    const inlineOnly = kids.every(k => ['inline', 'contents'].includes(getComputedStyle(k).display))
-    if (kids.length > 0 && !ATOMIC.has(tag) && !(leafTags.has(tag) && inlineOnly)) {
-      kids.forEach(walk)
-      return
-    }
-    const rect = el.getBoundingClientRect()
-    if (rect.width < 1 || rect.height < 1) return
-    bones.push([
-      pct(rect.left - base.left, base.width),
-      Math.round(rect.top - base.top),
-      pct(rect.width, base.width),
-      Math.round(rect.height),
-      radius(el, rect, tag),
-    ])
+  const bone = (box: Box, r: number | string, kind?: Kind): Bone => {
+    const b: Bone = [
+      base.width > 0 ? +(((box.left - base.left) / base.width) * 100).toFixed(3) : 0,
+      Math.round(box.top - base.top),
+      base.width > 0 ? +(((box.right - box.left) / base.width) * 100).toFixed(3) : 0,
+      Math.round(box.bottom - box.top),
+      r,
+    ]
+    if (kind) b.push(kind)
+    return b
   }
 
-  ;[...root.children].forEach(walk)
-  return { width: Math.round(base.width), height: Math.round(base.height), bones }
+  const text = (node: Text, clip: Box) => {
+    if (!node.textContent?.trim()) return
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    for (const rect of range.getClientRects()) {
+      const box = intersect(rect, clip)
+      if (box) lines.push(box)
+    }
+  }
+
+  const walk = (el: Element, clip: Box, bg: string) => {
+    const style = getComputedStyle(el)
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return
+    if (exclude && el.matches(exclude)) return
+    const tag = el.tagName.toLowerCase()
+    const box = intersect(el.getBoundingClientRect(), clip)
+    if (ATOMIC.has(tag) || leafTags.has(tag)) {
+      if (box) blocks.push(bone(box, radius(el, root)))
+      return
+    }
+    const ownBg = style.backgroundColor
+    const filled = (!clear(ownBg) && ownBg !== bg) || style.backgroundImage !== 'none'
+    const outlined = ['Top', 'Right', 'Bottom', 'Left'].some(side => {
+      const width = parseFloat(style.getPropertyValue(`border-${side.toLowerCase()}-width`))
+      return width > 0 && !clear(style.getPropertyValue(`border-${side.toLowerCase()}-color`))
+    })
+    const hasContent = [...el.childNodes].some(n => n.nodeType === 1 || (n.nodeType === 3 && n.textContent?.trim()))
+    if (!hasContent) {
+      // An empty painted box is visible content on its own: a divider, a dot, a cover image.
+      if (box && (filled || outlined)) blocks.push(bone(box, radius(el, root)))
+      return
+    }
+    if (box && (filled || outlined)) surfaces.push(bone(box, radius(el, root), filled ? 1 : 2))
+    const inner = style.overflow !== 'visible' ? (intersect(clip, el.getBoundingClientRect()) ?? clip) : clip
+    const innerBg = clear(ownBg) ? bg : ownBg
+    for (const node of el.childNodes) {
+      if (node.nodeType === 3) text(node as Text, inner)
+      else if (node.nodeType === 1) walk(node as Element, inner, innerBg)
+    }
+  }
+
+  const bg = backdrop(root)
+  for (const node of root.childNodes) {
+    if (node.nodeType === 3) text(node as Text, NO_CLIP)
+    else if (node.nodeType === 1) walk(node as Element, NO_CLIP, bg)
+  }
+  const textBones = mergeLines(lines).map(box => bone(box, TEXT_RADIUS))
+  return {
+    width: Math.round(base.width),
+    height: Math.round(base.height),
+    bones: [...surfaces, ...blocks, ...textBones],
+  }
 }

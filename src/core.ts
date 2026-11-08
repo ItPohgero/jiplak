@@ -1,5 +1,11 @@
-/** One placeholder rect: x and w are % of capture width, y and h are px, r is border-radius. */
-export type Bone = [x: number, y: number, w: number, h: number, r: number | string]
+/**
+ * How a bone is drawn. Omitted for a placeholder block (so 0.1 bones stay valid);
+ * 1 = card/panel surface with a background, 2 = surface with only a border.
+ */
+export type Kind = 1 | 2
+
+/** One rect: x and w are % of capture width, y and h are px, r is border-radius. */
+export type Bone = [x: number, y: number, w: number, h: number, r: number | string, kind?: Kind]
 
 /** Layout of one `<Skeleton>` captured at one viewport width. */
 export interface Capture {

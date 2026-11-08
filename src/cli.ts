@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { chromium } from 'playwright'
@@ -7,9 +7,11 @@ import type { Bones, Capture } from './core.js'
 import { crawlPaths, loadConfig, registrySource, themeOf, validName } from './config.js'
 import type { SnapshotOptions } from './snapshot.js'
 
-const USAGE = `Usage: jiplak build [url] [--config jiplak.yaml]
+const USAGE = `Usage:
+  jiplak init                               create jiplak.yaml and an empty registry
+  jiplak build [url] [--config jiplak.yaml] capture every <Skeleton> in your app
 
-Starts at each route in jiplak.yaml, follows same-origin links, captures
+build starts at each route in jiplak.yaml, follows same-origin links, captures
 every <Skeleton name="..."> at every breakpoint, and writes
 <out>/<name>.bones.json plus <out>/registry.ts.`
 
@@ -18,9 +20,26 @@ const { positionals, values } = parseArgs({
   options: { config: { type: 'string', default: 'jiplak.yaml' }, help: { type: 'boolean', short: 'h' } },
 })
 
-if (values.help || positionals[0] !== 'build') {
+if (values.help || !['build', 'init'].includes(positionals[0])) {
   console.log(USAGE)
   process.exit(values.help ? 0 : 1)
+}
+
+if (positionals[0] === 'init') {
+  const outDir = existsSync('src') ? './src/bones' : './bones'
+  if (existsSync(values.config!)) console.log(`jiplak: ${values.config} already exists, kept`)
+  else {
+    writeFileSync(values.config!, `# https://github.com/ItPohgero/jiplak#configuration\nurl: http://localhost:3000\nout: ${outDir}\n`)
+    console.log(`jiplak: created ${values.config}`)
+  }
+  const registry = join(loadConfig(readFileSync(values.config!, 'utf8')).out, 'registry.ts')
+  if (!existsSync(registry)) {
+    mkdirSync(resolve(registry, '..'), { recursive: true })
+    writeFileSync(registry, registrySource([], {}))
+    console.log(`jiplak: created ${registry}`)
+  }
+  console.log(`\nNext:\n  1. import ${registry.replace(/\.ts$/, '')} once in a client component (relative path or your alias)\n  2. wrap components in <Skeleton name="..." loading={...}>\n  3. start your app, then run: npx jiplak build`)
+  process.exit(0)
 }
 
 let configText = ''
@@ -51,21 +70,28 @@ const captured: Record<string, Bones> = {}
 const page = await context.newPage()
 const queue = [...new Set(config.routes)]
 const seen = new Set(queue)
+let dropped = 0
 try {
   for (let route = queue.shift(); route !== undefined; route = queue.shift()) {
     for (const [i, width] of config.breakpoints.entries()) {
       await page.setViewportSize({ width, height: 900 })
-      await page.goto(origin + route, { waitUntil: 'load' })
+      // networkidle rides out a dev server that is still compiling the page.
+      await page.goto(origin + route, { waitUntil: 'networkidle', timeout: 60_000 })
+      // A page with <Skeleton> sets the hook once hydrated; give a slow hydration a few seconds.
+      await page.waitForFunction(() => window.__JIPLAK_SNAPSHOT, null, { timeout: 5_000 }).catch(() => {})
       await page.waitForTimeout(config.wait)
-      if (i === 0) {
-        if (!page.url().startsWith(origin)) {
-          console.warn(`  ${route}: redirected off-origin to ${page.url()}, skipped`)
-          break
-        }
+      // Text width depends on the web font; measure only after it has loaded.
+      await page.evaluate(() => document.fonts.ready.then(() => undefined))
+      if (i === 0 && !page.url().startsWith(origin)) {
+        console.warn(`  ${route}: redirected off-origin to ${page.url()}, skipped`)
+        break
+      }
+      if (i === 0 && config.crawl) {
         const hrefs = await page.$$eval('a[href]', as => as.map(a => (a as HTMLAnchorElement).href))
         for (const path of crawlPaths(hrefs, origin, config.ignore)) {
-          if (seen.size >= config.maxPages) break
-          if (!seen.has(path)) {
+          if (seen.has(path)) continue
+          if (seen.size >= config.maxPages) dropped++
+          else {
             seen.add(path)
             queue.push(path)
           }
@@ -100,12 +126,19 @@ try {
 
 mkdirSync(out, { recursive: true })
 for (const [name, bones] of Object.entries(captured)) {
-  writeFileSync(join(out, `${name}.bones.json`), JSON.stringify(bones) + '\n')
+  const file = join(out, `${name}.bones.json`)
+  // Keep widths that failed this run instead of dropping them.
+  const previous: Bones = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {}
+  writeFileSync(file, JSON.stringify({ ...previous, ...bones }) + '\n')
+  const missing = config.breakpoints.filter(w => !(w in bones))
+  if (missing.length > 0) console.warn(`  ${name}: not captured at ${missing.join(', ')} this run, kept previous`)
 }
 // Skeletons not visited this run keep their previous bones.
 const names = readdirSync(out)
   .filter(f => f.endsWith('.bones.json'))
   .map(f => f.slice(0, -'.bones.json'.length))
 writeFileSync(join(out, 'registry.ts'), registrySource(names, themeOf(config)))
-if (seen.size >= config.maxPages) console.warn(`jiplak: stopped at maxPages (${config.maxPages}); raise it in jiplak.yaml if pages were missed`)
+if (dropped > 0) console.warn(`jiplak: maxPages (${config.maxPages}) reached, ${dropped} linked page(s) not visited; raise maxPages if a skeleton is missing`)
+if (Object.keys(captured).length === 0)
+  console.warn('jiplak: no <Skeleton> found. Is the app running, and does a visited page import jiplak/react?')
 console.log(`jiplak: ${seen.size} page(s) crawled, ${Object.keys(captured).length} skeleton(s) captured, ${names.length} in ${config.out}/registry.ts`)

@@ -100,7 +100,7 @@ export function Skeleton({ name, loading, children, fixture, bones, options, cla
       {capture && (
         <div aria-hidden style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
           <style>{KEYFRAMES}</style>
-          {capture.bones.map(([x, y, w, h, r], i) => {
+          {capture.bones.map(([x, y, w, h, r, kind], i) => {
             const style: CSSProperties = {
               position: 'absolute',
               left: `${x}%`,
@@ -109,8 +109,11 @@ export function Skeleton({ name, loading, children, fixture, bones, options, cla
               width: r === '50%' ? h : `${w}%`,
               height: h,
               borderRadius: r,
-              background: color,
             }
+            // Cards and panels stay still and faint so the blocks on top read as content.
+            if (kind === 1) return <div key={i} style={{ ...style, background: color, opacity: 0.45 }} />
+            if (kind === 2) return <div key={i} style={{ ...style, border: `1px solid ${color}` }} />
+            style.background = color
             if (t.animate === 'pulse') style.animation = `jiplak-pulse ${t.speed} ease-in-out infinite`
             if (t.animate === 'shimmer') {
               style.background = `linear-gradient(110deg, ${color} 30%, ${highlight} 50%, ${color} 70%)`

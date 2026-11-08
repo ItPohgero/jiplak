@@ -1,6 +1,6 @@
 {
   "name": "jiplak",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Pixel-perfect skeleton loading screens, auto-captured from your real React UI.",
   "keywords": [
     "skeleton",
@@ -34,7 +34,7 @@
   "type": "module",
   "license": "MIT",
   "bin": {
-    "jiplak": "./dist/cli.js"
+    "jiplak": "dist/cli.js"
   },
   "exports": {
     "./react": {

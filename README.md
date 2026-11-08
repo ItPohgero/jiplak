@@ -25,7 +25,7 @@ Hand-drawn skeletons drift out of sync with the real UI the moment a layout
 changes. jiplak ("to trace" in Indonesian) traces your rendered components in
 a real browser and stores their exact shape. You never draw a skeleton again.
 
-- **Zero drawing.** Bones come from the real DOM: text, images, buttons.
+- **Pixel-exact.** Every line of text becomes its own bar, sized to the glyphs. Images, buttons, and cards keep their real size and corner radius.
 - **Zero route list.** The CLI crawls your app through its own links.
 - **Responsive.** Captured at several screen widths; the right one is picked at runtime.
 - **One YAML file.** `jiplak.yaml`, one line to start.
@@ -45,15 +45,25 @@ a real browser and stores their exact shape. You never draw a skeleton again.
 
 ## Quick start
 
-### 1. Install
+### 1. Install and set up
 
 ```bash
 npm install jiplak
-# or
-bun add jiplak
+npx jiplak init
 ```
 
-### 2. Wrap components that wait for data
+`init` creates `jiplak.yaml` and an empty `src/bones/registry.ts`.
+
+### 2. Import the registry once
+
+In a client component that always loads, such as your providers:
+
+```tsx
+'use client'
+import '@/bones/registry' // or a relative path to src/bones/registry
+```
+
+### 3. Wrap components that wait for data
 
 ```tsx
 import { Skeleton } from 'jiplak/react'
@@ -69,12 +79,6 @@ function Profile() {
 }
 ```
 
-### 3. Add `jiplak.yaml` to your project root
-
-```yaml
-url: http://localhost:3000
-```
-
 ### 4. Start your app, then capture
 
 ```bash
@@ -87,18 +91,19 @@ In a second terminal:
 npx jiplak build
 ```
 
-### 5. Import the generated registry once
-
-Import it from a client component that always loads, such as your providers:
-
-```tsx
-'use client'
-import './bones/registry'
-```
-
 Done. While `loading` is `true`, the skeleton shows automatically.
 
 ## FAQ
+
+<details>
+<summary><b>The skeleton does not look like my real content.</b></summary>
+
+jiplak copies exactly what it sees at build time. If your component is empty
+or shows placeholder text without data, pass a `fixture` that looks like real
+content: the same title length, the same number of summary lines, an image if
+real rows have one. Then run `npx jiplak build` again.
+
+</details>
 
 <details>
 <summary><b>Do I wrap every screen?</b></summary>
@@ -158,6 +163,12 @@ as extra start points:
 routes:
   - /
   - /settings/profile
+```
+
+To visit only the listed routes, turn crawling off:
+
+```yaml
+crawl: false
 ```
 
 </details>
@@ -225,6 +236,7 @@ a clear error, so typos never pass silently.
 # capture
 url: http://localhost:3000       # your running app
 routes: [/]                      # crawl start points
+crawl: true                      # false: visit only routes
 ignore: []                       # path prefixes never visited
 maxPages: 50                     # crawl limit
 breakpoints: [375, 768, 1280]    # screen widths to capture
@@ -266,15 +278,22 @@ speed: 1.6s
 ### CLI
 
 ```bash
-jiplak build [url] [--config jiplak.yaml]
+jiplak init                                  # create jiplak.yaml and an empty registry
+jiplak build [url] [--config jiplak.yaml]    # capture every <Skeleton>
 ```
 
 ## How it works
 
 1. `jiplak build` opens your app in a headless browser, starting at
    `routes`, and follows links on the same origin.
-2. At each breakpoint, every `<Skeleton>` on the page is captured. Text
-   blocks, images, and controls become rectangles ("bones").
+2. After the page and its web fonts load, every `<Skeleton>` is captured at
+   each breakpoint ("bones"):
+   - each rendered line of text becomes one bar, measured from the glyphs;
+     clamped or clipped lines are left out;
+   - images, icons, buttons, and inputs become blocks with their visible
+     corner radius (including a radius that comes from a clipping parent);
+   - cards and panels with a background or border become faint surfaces
+     drawn behind the blocks.
 3. Bones are saved to `src/bones/<name>.bones.json`, plus a `registry.ts`
    that loads them.
 4. At runtime, while `loading` is `true`, the bones are drawn over the hidden

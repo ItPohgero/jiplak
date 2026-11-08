@@ -25,7 +25,7 @@ Skeleton yang digambar manual cepat tidak sesuai lagi begitu layout berubah.
 jiplak memotret komponen asli di browser dan menyimpan bentuknya. Kamu tidak
 perlu menggambar skeleton lagi.
 
-- **Tanpa menggambar.** Bentuk diambil dari DOM asli: teks, gambar, tombol.
+- **Persis sampai piksel.** Setiap baris teks jadi bar sendiri seukuran hurufnya. Gambar, tombol, dan kartu memakai ukuran dan sudut aslinya.
 - **Tanpa daftar route.** CLI menjelajah aplikasi lewat link-nya sendiri.
 - **Responsif.** Dipotret di beberapa lebar layar, dipilih otomatis saat tampil.
 - **Satu file YAML.** `jiplak.yaml`, cukup satu baris untuk mulai.
@@ -45,15 +45,25 @@ perlu menggambar skeleton lagi.
 
 ## Mulai cepat
 
-### 1. Install
+### 1. Install dan siapkan
 
 ```bash
 npm install jiplak
-# atau
-bun add jiplak
+npx jiplak init
 ```
 
-### 2. Bungkus komponen yang menunggu data
+`init` membuat `jiplak.yaml` dan `src/bones/registry.ts` yang masih kosong.
+
+### 2. Import registry sekali saja
+
+Di komponen client yang selalu dimuat, misalnya providers:
+
+```tsx
+'use client'
+import '@/bones/registry' // atau path relatif ke src/bones/registry
+```
+
+### 3. Bungkus komponen yang menunggu data
 
 ```tsx
 import { Skeleton } from 'jiplak/react'
@@ -69,12 +79,6 @@ function Profil() {
 }
 ```
 
-### 3. Buat `jiplak.yaml` di root project
-
-```yaml
-url: http://localhost:3000
-```
-
 ### 4. Jalankan aplikasi, lalu potret
 
 ```bash
@@ -87,18 +91,19 @@ Di terminal lain:
 npx jiplak build
 ```
 
-### 5. Import registry hasil build sekali saja
-
-Import dari komponen client yang selalu dimuat, misalnya providers:
-
-```tsx
-'use client'
-import './bones/registry'
-```
-
 Selesai. Saat `loading` bernilai `true`, skeleton tampil otomatis.
 
 ## Pertanyaan umum
+
+<details>
+<summary><b>Skeleton tidak mirip dengan konten asli.</b></summary>
+
+jiplak menyalin persis apa yang terlihat saat build. Kalau komponen kosong atau
+menampilkan teks pengganti tanpa data, beri `fixture` yang mirip konten asli:
+panjang judul sama, jumlah baris ringkasan sama, ada gambar bila baris asli
+punya gambar. Lalu jalankan `npx jiplak build` lagi.
+
+</details>
 
 <details>
 <summary><b>Apakah setiap screen harus diberi <code>&lt;Skeleton&gt;</code>?</b></summary>
@@ -158,6 +163,12 @@ Tambahkan halaman tanpa link sebagai titik awal:
 routes:
   - /
   - /pengaturan/profil
+```
+
+Untuk hanya mengunjungi route yang ditulis, matikan penjelajahan:
+
+```yaml
+crawl: false
 ```
 
 </details>
@@ -224,6 +235,7 @@ langsung ditolak dengan pesan error.
 # pemotretan
 url: http://localhost:3000       # alamat aplikasi yang berjalan
 routes: [/]                      # titik awal jelajah
+crawl: true                      # false: hanya kunjungi routes
 ignore: []                       # path yang tidak dikunjungi
 maxPages: 50                     # batas jumlah halaman
 breakpoints: [375, 768, 1280]    # lebar layar yang dipotret
@@ -265,15 +277,22 @@ speed: 1.6s
 ### CLI
 
 ```bash
-jiplak build [url] [--config jiplak.yaml]
+jiplak init                                  # buat jiplak.yaml dan registry kosong
+jiplak build [url] [--config jiplak.yaml]    # potret setiap <Skeleton>
 ```
 
 ## Cara kerja
 
 1. `jiplak build` membuka aplikasi di browser tanpa tampilan, mulai dari
    `routes`, lalu mengikuti link di domain yang sama.
-2. Di setiap lebar layar, setiap `<Skeleton>` dipotret. Teks, gambar, dan
-   tombol dicatat sebagai kotak ("bones").
+2. Setelah halaman dan web font selesai dimuat, setiap `<Skeleton>` dipotret
+   di setiap lebar layar ("bones"):
+   - setiap baris teks yang tampil jadi satu bar, diukur dari hurufnya;
+     baris yang terpotong (line-clamp, overflow) dilewati;
+   - gambar, ikon, tombol, dan input jadi kotak dengan sudut yang terlihat,
+     termasuk sudut dari parent yang memotongnya;
+   - kartu dan panel dengan background atau border jadi permukaan tipis di
+     belakang kotak.
 3. Kotak disimpan ke `src/bones/<name>.bones.json`, ditambah `registry.ts`
    yang memuatnya.
 4. Saat `loading`, kotak digambar di atas komponen yang disembunyikan,
