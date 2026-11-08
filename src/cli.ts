@@ -79,8 +79,14 @@ try {
   for (let route = queue.shift(); route !== undefined; route = queue.shift()) {
     for (const [i, width] of config.breakpoints.entries()) {
       await page.setViewportSize({ width, height: 900 })
-      // networkidle rides out a dev server that is still compiling the page.
-      const response = await page.goto(origin + route, { waitUntil: 'networkidle', timeout: 60_000 })
+      // A dev server may still be compiling: allow a slow load, then wait for the network to
+      // settle, but never forever (pages that poll never go idle).
+      const response = await page.goto(origin + route, { waitUntil: 'load', timeout: 90_000 }).catch(error => {
+        console.warn(`  ${route}: ${error instanceof Error ? error.message.split('\n')[0] : error}, skipped`)
+        return 'failed' as const
+      })
+      if (response === 'failed') break
+      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {})
       if (response && response.status() >= 500) {
         console.warn(`  ${route}: HTTP ${response.status()} from the server, skipped (is the app running?)`)
         break
@@ -95,7 +101,9 @@ try {
         break
       }
       if (i === 0 && config.crawl) {
-        const hrefs = await page.$$eval('a[href]', as => as.map(a => (a as HTMLAnchorElement).href))
+        const hrefs = await page.$$eval('a[href]', as =>
+          as.filter(a => !a.closest('[data-jiplak-fixture]')).map(a => (a as HTMLAnchorElement).href),
+        )
         for (const path of crawlPaths(hrefs, origin, config.ignore)) {
           if (seen.has(path) || !plan.allows(path)) continue
           const sample = plan.sampleOf(path)

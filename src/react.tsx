@@ -88,10 +88,25 @@ export function Skeleton({ name, loading, children, fixture, bones, options, cla
   }, [])
 
   if (isBuild) {
-    return (
-      <div ref={ref} className={className} data-jiplak={name} data-jiplak-options={options && JSON.stringify(options)}>
+    const marker = (
+      <div
+        ref={ref}
+        className={className}
+        data-jiplak={name}
+        data-jiplak-options={options && JSON.stringify(options)}
+        // Fixture links point at made-up records; the crawler must not follow them.
+        data-jiplak-fixture={fixture ? '' : undefined}
+      >
         {fixture ?? children}
       </div>
+    )
+    if (!fixture) return marker
+    // The real children stay mounted but hidden, so the crawler still finds their links.
+    return (
+      <>
+        {marker}
+        <div hidden>{children}</div>
+      </>
     )
   }
 
