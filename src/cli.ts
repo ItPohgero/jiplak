@@ -68,6 +68,10 @@ if (cookies.length > 0) {
   )
 }
 
+console.log(
+  `jiplak: crawling ${origin} at ${config.breakpoints.join(', ')}px` +
+    (cookies.length > 0 ? ` with ${cookies.length} cookie(s)` : ''),
+)
 const captured: Record<string, Bones> = {}
 const page = await context.newPage()
 const plan = routePlan(config.routes)
@@ -76,7 +80,10 @@ const seen = new Set(queue)
 const sampled = new Set<string>()
 let dropped = 0
 try {
+  let visited = 0
   for (let route = queue.shift(); route !== undefined; route = queue.shift()) {
+    // A slow first compile or a dead API can take a while per page; say where we are.
+    console.log(`  [${++visited}/${visited + queue.length}] ${route}`)
     for (const [i, width] of config.breakpoints.entries()) {
       await page.setViewportSize({ width, height: 900 })
       // A dev server may still be compiling: allow a slow load, then wait for the network to
@@ -100,6 +107,10 @@ try {
         console.warn(`  ${route}: redirected off-origin to ${page.url()}, skipped`)
         break
       }
+      // Usually a login wall: the session cookie is missing or expired.
+      const landed = new URL(page.url()).pathname
+      if (i === 0 && landed !== new URL(origin + route).pathname)
+        console.warn(`  ${route}: redirected to ${landed} (check JIPLAK_COOKIES if this page needs a login)`)
       if (i === 0 && config.crawl) {
         const hrefs = await page.$$eval('a[href]', as =>
           as.filter(a => !a.closest('[data-jiplak-fixture]')).map(a => (a as HTMLAnchorElement).href),
