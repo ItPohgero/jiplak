@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { chromium } from 'playwright'
 import type { Bones, Capture } from './core.js'
-import { crawlPaths, loadConfig, registrySource, themeOf, validName } from './config.js'
+import { crawlPaths, loadConfig, registrySource, routePlan, themeOf, validName } from './config.js'
 import type { SnapshotOptions } from './snapshot.js'
 
 const USAGE = `Usage:
@@ -70,15 +70,21 @@ if (cookies.length > 0) {
 
 const captured: Record<string, Bones> = {}
 const page = await context.newPage()
-const queue = [...new Set(config.routes)]
+const plan = routePlan(config.routes)
+const queue = [...plan.starts]
 const seen = new Set(queue)
+const sampled = new Set<string>()
 let dropped = 0
 try {
   for (let route = queue.shift(); route !== undefined; route = queue.shift()) {
     for (const [i, width] of config.breakpoints.entries()) {
       await page.setViewportSize({ width, height: 900 })
       // networkidle rides out a dev server that is still compiling the page.
-      await page.goto(origin + route, { waitUntil: 'networkidle', timeout: 60_000 })
+      const response = await page.goto(origin + route, { waitUntil: 'networkidle', timeout: 60_000 })
+      if (response && response.status() >= 500) {
+        console.warn(`  ${route}: HTTP ${response.status()} from the server, skipped (is the app running?)`)
+        break
+      }
       // A page with <Skeleton> sets the hook once hydrated; give a slow hydration a few seconds.
       await page.waitForFunction(() => window.__JIPLAK_SNAPSHOT, null, { timeout: 5_000 }).catch(() => {})
       await page.waitForTimeout(config.wait)
@@ -91,11 +97,14 @@ try {
       if (i === 0 && config.crawl) {
         const hrefs = await page.$$eval('a[href]', as => as.map(a => (a as HTMLAnchorElement).href))
         for (const path of crawlPaths(hrefs, origin, config.ignore)) {
-          if (seen.has(path)) continue
+          if (seen.has(path) || !plan.allows(path)) continue
+          const sample = plan.sampleOf(path)
+          if (sample && sampled.has(sample)) continue
           if (seen.size >= config.maxPages) dropped++
           else {
             seen.add(path)
             queue.push(path)
+            if (sample) sampled.add(sample)
           }
         }
       }

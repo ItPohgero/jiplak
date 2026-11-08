@@ -4,7 +4,10 @@ import type { Animate, Theme } from './core.js'
 export interface Config extends Theme {
   /** Origin of the running app, e.g. http://localhost:3000. */
   url: string
-  /** Start paths. Same-origin links found on each page are followed too. */
+  /**
+   * Plain paths are start points. Glob paths limit which links are followed:
+   * `*` matches one segment (and one sample page is enough), `**` any depth.
+   */
   routes: string[]
   /** Follow same-origin links from `routes`. Off: visit only `routes`. */
   crawl: boolean
@@ -97,6 +100,41 @@ export function registrySource(names: string[], theme: Theme): string {
     '})',
     '',
   ].join('\n')
+}
+
+/** How the crawler uses `routes`: where to start, which links to follow, which to sample once. */
+export interface RoutePlan {
+  starts: string[]
+  /** True when a crawled path may be visited (always true without glob routes). */
+  allows: (path: string) => boolean
+  /** The `*` pattern a path is one sample of, so only the first match is visited. */
+  sampleOf: (path: string) => string | undefined
+}
+
+function globRegex(glob: string): RegExp {
+  const body = glob
+    .replace(/\/$/, '')
+    .split('/')
+    .map(seg => (seg === '**' ? '\u0000' : seg.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]+')))
+    .join('/')
+    .replace(/\/\u0000/g, '(?:/.*)?')
+  return new RegExp(`^${body}$`)
+}
+
+export function routePlan(routes: string[]): RoutePlan {
+  const globs = routes.filter(r => r.includes('*'))
+  const matchers = globs.map(g => ({ glob: g, re: globRegex(g), sample: !g.includes('**') }))
+  // A glob also starts at its fixed prefix (/id/entities/* at /id/entities, the page that links to
+  // them), unless another glob already reaches that prefix by crawling.
+  const prefixes = matchers
+    .map(m => ({ glob: m.glob, prefix: m.glob.slice(0, m.glob.indexOf('*')).replace(/\/[^/]*$/, '') || '/' }))
+    .filter(({ glob, prefix }) => !matchers.some(o => o.glob !== glob && o.re.test(prefix)))
+    .map(({ prefix }) => prefix)
+  return {
+    starts: [...new Set([...routes.filter(r => !r.includes('*')), ...prefixes])],
+    allows: path => matchers.length === 0 || matchers.some(m => m.re.test(path)),
+    sampleOf: path => matchers.find(m => m.sample && m.re.test(path))?.glob,
+  }
 }
 
 // Visiting these with a GET can end the session or download files.

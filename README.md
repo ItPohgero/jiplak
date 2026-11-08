@@ -154,6 +154,27 @@ the real children:
 </details>
 
 <details>
+<summary><b>My app is big. Can I crawl only some sections?</b></summary>
+
+Yes. Write glob paths in `routes`; the crawler then follows only links that
+match one of them:
+
+```yaml
+routes:
+  - /                  # plain path: a start point
+  - /dashboard/**      # ** = every page below /dashboard
+  - /products/*        # * = one dynamic segment; one sample page is enough
+```
+
+- A glob also starts at its fixed prefix (`/products/*` starts at
+  `/products`), so you never write a real slug.
+- A `*` glob is visited **once**: every `/products/:id` page has the same
+  shape, so jiplak captures the first one it finds and skips the rest.
+- Without globs, every link is followed, as before.
+
+</details>
+
+<details>
 <summary><b>A page was not found.</b></summary>
 
 The crawler finds only pages that another page links to. Add unlinked pages
@@ -237,7 +258,7 @@ a clear error, so typos never pass silently.
 ```yaml
 # capture
 url: http://localhost:3000       # your running app
-routes: [/]                      # crawl start points
+routes: [/]                      # start points; globs (* and **) limit the crawl
 crawl: true                      # false: visit only routes
 ignore: []                       # path prefixes never visited
 maxPages: 50                     # crawl limit

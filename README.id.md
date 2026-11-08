@@ -154,6 +154,27 @@ aslinya:
 </details>
 
 <details>
+<summary><b>Aplikasi saya besar. Bisa jelajah sebagian saja?</b></summary>
+
+Bisa. Tulis path glob di `routes`; penjelajah hanya mengikuti link yang cocok
+dengan salah satunya:
+
+```yaml
+routes:
+  - /                  # path biasa: titik awal
+  - /dashboard/**      # ** = semua halaman di bawah /dashboard
+  - /produk/*          # * = satu segmen dinamis; cukup satu contoh
+```
+
+- Glob juga mulai dari awalan tetapnya (`/produk/*` mulai dari `/produk`),
+  jadi kamu tidak perlu menulis slug asli.
+- Glob `*` dikunjungi **sekali**: semua halaman `/produk/:id` bentuknya sama,
+  jadi jiplak memotret yang pertama ditemukan dan melewati sisanya.
+- Tanpa glob, semua link diikuti seperti biasa.
+
+</details>
+
+<details>
 <summary><b>Ada halaman yang tidak ketemu.</b></summary>
 
 Penjelajah hanya menemukan halaman yang punya link dari halaman lain.
@@ -236,7 +257,7 @@ langsung ditolak dengan pesan error.
 ```yaml
 # pemotretan
 url: http://localhost:3000       # alamat aplikasi yang berjalan
-routes: [/]                      # titik awal jelajah
+routes: [/]                      # titik awal; glob (* dan **) membatasi jelajah
 crawl: true                      # false: hanya kunjungi routes
 ignore: []                       # path yang tidak dikunjungi
 maxPages: 50                     # batas jumlah halaman

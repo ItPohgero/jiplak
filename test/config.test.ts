@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { pickCapture } from '../src/core'
-import { crawlPaths, loadConfig, registrySource, themeOf, validName } from '../src/config'
+import { crawlPaths, loadConfig, registrySource, routePlan, themeOf, validName } from '../src/config'
 
 describe('loadConfig', () => {
   test('empty file gives defaults', () => {
@@ -87,4 +87,38 @@ test('loadConfig validates crawl keys', () => {
   expect(loadConfig('').maxPages).toBe(50)
   expect(() => loadConfig('maxPages: 0')).toThrow('maxPages')
   expect(() => loadConfig('ignore: [admin]')).toThrow('ignore')
+})
+
+describe('routePlan', () => {
+  const plan = routePlan(['/id', '/id/learn/**', '/id/entities/*', '/id/learn/class/show/*'])
+
+  test('plain paths and glob prefixes are start points', () => {
+    // /id/learn/class/show is reached by crawling /id/learn/**, so it is not a start.
+    expect(plan.starts).toEqual(['/id', '/id/learn', '/id/entities'])
+  })
+
+  test('only links matching a glob are followed', () => {
+    expect(plan.allows('/id/learn/calendar')).toBe(true)
+    expect(plan.allows('/id/learn')).toBe(true)
+    expect(plan.allows('/id/entities/supr-space')).toBe(true)
+    expect(plan.allows('/id/entities/supr-space/members')).toBe(false) // * is one segment
+    expect(plan.allows('/id/governance')).toBe(false)
+  })
+
+  test('* globs are sampled once; ** globs are not', () => {
+    expect(plan.sampleOf('/id/entities/a')).toBe('/id/entities/*')
+    expect(plan.sampleOf('/id/learn/class/show/42')).toBe('/id/learn/class/show/*')
+    expect(plan.sampleOf('/id/learn/calendar')).toBeUndefined()
+  })
+
+  test('without globs every link is followed', () => {
+    const open = routePlan(['/'])
+    expect(open.starts).toEqual(['/'])
+    expect(open.allows('/anything/deep')).toBe(true)
+    expect(open.sampleOf('/anything')).toBeUndefined()
+  })
+
+  test('a glob at the root starts at /', () => {
+    expect(routePlan(['/*']).starts).toEqual(['/'])
+  })
 })
