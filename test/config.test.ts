@@ -39,12 +39,14 @@ channel: chrome
   })
 })
 
-test('pickCapture picks largest breakpoint <= width, else smallest', () => {
-  const cap = (width: number) => ({ width, height: 10, bones: [] })
-  const bones = { 375: cap(375), 768: cap(768), 1280: cap(1280) }
-  expect(pickCapture(bones, 320)?.width).toBe(375)
-  expect(pickCapture(bones, 800)?.width).toBe(768)
-  expect(pickCapture(bones, 1280)?.width).toBe(1280)
+test('pickCapture picks nearest container width, not viewport key', () => {
+  const cap = (width: number) => ({ width, height: width, bones: [] })
+  // Viewport 1280 gave a 704px container; 768 gave 584; 375 gave 335.
+  const bones = { 375: cap(335), 768: cap(584), 1280: cap(704) }
+  expect(pickCapture(bones, 704)?.width).toBe(704)
+  expect(pickCapture(bones, 689)?.width).toBe(704) // live scrollbar takes 15px
+  expect(pickCapture(bones, 600)?.width).toBe(584)
+  expect(pickCapture(bones, 320)?.width).toBe(335)
   expect(pickCapture({}, 800)).toBeUndefined()
 })
 
