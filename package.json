@@ -1,19 +1,59 @@
 {
   "name": "jiplak",
   "version": "0.1.0",
-  "description": "Skeleton loading screens captured from your real DOM. Config in jiplak.yaml.",
+  "description": "Pixel-perfect skeleton loading screens, auto-captured from your real React UI.",
+  "keywords": [
+    "skeleton",
+    "skeleton-loader",
+    "loading",
+    "placeholder",
+    "react",
+    "playwright",
+    "yaml",
+    "ui"
+  ],
+  "author": "Wahyu Agus Arifin (https://github.com/ItPohgero)",
+  "homepage": "https://github.com/ItPohgero/jiplak#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ItPohgero/jiplak.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ItPohgero/jiplak/issues"
+  },
+  "funding": [
+    {
+      "type": "buymeacoffee",
+      "url": "https://buymeacoffee.com/wahyuagusarifin"
+    },
+    {
+      "type": "sponsor",
+      "url": "https://lokio.link"
+    }
+  ],
   "type": "module",
   "license": "MIT",
-  "bin": { "jiplak": "./dist/cli.js" },
+  "bin": {
+    "jiplak": "./dist/cli.js"
+  },
   "exports": {
-    "./react": { "types": "./dist/react.d.ts", "import": "./dist/react.js" },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    },
     "./package.json": "./package.json"
   },
-  "files": ["dist"],
+  "files": [
+    "dist",
+    "README.md",
+    "README.id.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "prepublishOnly": "bun run build && bun test"
   },
   "dependencies": {
     "playwright": "^1.56.0",
