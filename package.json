@@ -1,6 +1,6 @@
 {
   "name": "jiplak",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Pixel-perfect skeleton loading screens, auto-captured from your real React UI.",
   "keywords": [
     "skeleton",
