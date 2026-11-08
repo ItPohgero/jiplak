@@ -1,0 +1,88 @@
+import { describe, expect, test } from 'bun:test'
+import { pickCapture } from '../src/core'
+import { crawlPaths, loadConfig, registrySource, themeOf, validName } from '../src/config'
+
+describe('loadConfig', () => {
+  test('empty file gives defaults', () => {
+    const c = loadConfig('')
+    expect(c.url).toBe('http://localhost:3000')
+    expect(c.routes).toEqual(['/'])
+    expect(c.breakpoints).toEqual([375, 768, 1280])
+  })
+
+  test('reads yaml values', () => {
+    const c = loadConfig(`
+url: http://localhost:5173
+routes: [/, /dashboard]
+breakpoints: [390, 1440]
+out: ./app/bones
+animate: shimmer
+color: "#e5e5e5"
+channel: chrome
+`)
+    expect(c.routes).toEqual(['/', '/dashboard'])
+    expect(c.breakpoints).toEqual([390, 1440])
+    expect(c.channel).toBe('chrome')
+    expect(themeOf(c)).toEqual({ color: '#e5e5e5', animate: 'shimmer' })
+  })
+
+  test.each([
+    ['colour: red', 'unknown key "colour"'],
+    ['url: localhost:3000', 'url must start'],
+    ['routes: [dashboard]', 'must start with "/"'],
+    ['breakpoints: [0]', 'positive integers'],
+    ['animate: wobble', 'animate must be one of'],
+    ['cookies: [session]', 'name=value'],
+    ['- a', 'root must be a mapping'],
+  ])('rejects %p', (yaml, msg) => {
+    expect(() => loadConfig(yaml)).toThrow(msg)
+  })
+})
+
+test('pickCapture picks largest breakpoint <= width, else smallest', () => {
+  const cap = (width: number) => ({ width, height: 10, bones: [] })
+  const bones = { 375: cap(375), 768: cap(768), 1280: cap(1280) }
+  expect(pickCapture(bones, 320)?.width).toBe(375)
+  expect(pickCapture(bones, 800)?.width).toBe(768)
+  expect(pickCapture(bones, 1280)?.width).toBe(1280)
+  expect(pickCapture({}, 800)).toBeUndefined()
+})
+
+test('registrySource imports every bones file sorted', () => {
+  const src = registrySource(['user-card', 'blog-card'], { animate: 'pulse' })
+  expect(src).toContain("import b0 from './blog-card.bones.json'")
+  expect(src).toContain('"user-card": b1 as unknown as Bones,')
+  expect(src).toContain('configureJiplak({"animate":"pulse"})')
+})
+
+test('validName blocks path tricks', () => {
+  expect(validName('blog-card_2')).toBe(true)
+  expect(validName('../x')).toBe(false)
+  expect(validName('')).toBe(false)
+})
+
+test('crawlPaths keeps same-origin pages, drops logout, files, ignored and external', () => {
+  const origin = 'http://localhost:3000'
+  const paths = crawlPaths(
+    [
+      'http://localhost:3000/dashboard?tab=1#top',
+      'http://localhost:3000/dashboard/',
+      '/event/12',
+      'http://localhost:3000/logout',
+      'http://localhost:3000/auth/sign-out',
+      'http://localhost:3000/files/report.pdf',
+      'http://localhost:3000/admin/users',
+      'https://google.com/',
+      'mailto:a@b.c',
+    ],
+    origin,
+    ['/admin'],
+  )
+  expect(paths).toEqual(['/dashboard', '/event/12'])
+})
+
+test('loadConfig validates crawl keys', () => {
+  expect(loadConfig('').maxPages).toBe(50)
+  expect(() => loadConfig('maxPages: 0')).toThrow('maxPages')
+  expect(() => loadConfig('ignore: [admin]')).toThrow('ignore')
+})
