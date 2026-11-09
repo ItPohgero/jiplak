@@ -222,14 +222,24 @@ maxPages: 200
 <details>
 <summary><b>My pages need a login.</b></summary>
 
-Sign in to your app in a browser, copy the session cookie, and pass it through
-the environment so it never lands in the repo:
+Log in once, then build as usual:
 
 ```bash
-JIPLAK_COOKIES="session=your-session-cookie" npx jiplak build
+npx jiplak login   # a browser window opens: sign in like a normal user, then press Enter
+npx jiplak build   # reuses that session
 ```
 
-Several cookies use the Cookie header format: `"a=1; b=2"`.
+The session is saved to `.jiplak/session.json`; the `.jiplak` folder ignores
+itself, so it never lands in git. `build` writes refreshed cookies back to it,
+so it keeps working until the app ends the session. When a page redirects to
+your sign-in page, `build` says so: run `jiplak login` again.
+
+No browser window (CI)? Pass cookies through the environment instead, in the
+Cookie header format:
+
+```bash
+JIPLAK_COOKIES="session=your-session-cookie; other=value" npx jiplak build
+```
 
 </details>
 
@@ -302,6 +312,7 @@ speed: 1.6s
 
 ```bash
 jiplak init                                  # create jiplak.yaml and an empty registry
+jiplak login [url] [--config jiplak.yaml]    # log in once; build reuses the session
 jiplak build [url] [--config jiplak.yaml]    # capture every <Skeleton>
 ```
 

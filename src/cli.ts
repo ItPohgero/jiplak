@@ -9,6 +9,7 @@ import type { SnapshotOptions } from './snapshot.js'
 
 const USAGE = `Usage:
   jiplak init                               create jiplak.yaml and an empty registry
+  jiplak login [url] [--config jiplak.yaml] log in once in a browser window; build reuses the session
   jiplak build [url] [--config jiplak.yaml] capture every <Skeleton> in your app
 
 build starts at each route in jiplak.yaml, follows same-origin links, captures
@@ -20,7 +21,7 @@ const { positionals, values } = parseArgs({
   options: { config: { type: 'string', default: 'jiplak.yaml' }, help: { type: 'boolean', short: 'h' } },
 })
 
-if (values.help || !['build', 'init'].includes(positionals[0])) {
+if (values.help || !['build', 'init', 'login'].includes(positionals[0])) {
   console.log(USAGE)
   process.exit(values.help ? 0 : 1)
 }
@@ -51,9 +52,35 @@ try {
 const config = loadConfig(configText)
 const origin = (positionals[1] ?? config.url).replace(/\/$/, '')
 const out = resolve(config.out)
+// Saved by `jiplak login`; the folder ignores itself so the session never reaches git.
+const SESSION_DIR = '.jiplak'
+const SESSION = join(SESSION_DIR, 'session.json')
+
+if (positionals[0] === 'login') {
+  const browser = await chromium.launch({ channel: config.channel, headless: false })
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await page.goto(origin)
+  console.log(`jiplak: log in to ${origin} in the opened window, then press Enter here`)
+  await new Promise<void>(done => {
+    process.stdin.once('data', () => done())
+    browser.once('disconnected', () => done())
+  })
+  if (!browser.isConnected()) {
+    console.warn('jiplak: the browser was closed before Enter, no session saved')
+    process.exit(1)
+  }
+  mkdirSync(SESSION_DIR, { recursive: true })
+  writeFileSync(join(SESSION_DIR, '.gitignore'), '*\n')
+  await context.storageState({ path: SESSION })
+  await browser.close()
+  console.log(`jiplak: session saved to ${SESSION} (git-ignored). Next: jiplak build`)
+  process.exit(0)
+}
 
 const browser = await chromium.launch({ channel: config.channel })
-const context = await browser.newContext()
+const session = existsSync(SESSION)
+const context = await browser.newContext(session ? { storageState: SESSION } : {})
 await context.addInitScript(() => {
   window.__JIPLAK_BUILD = true
 })
@@ -70,6 +97,7 @@ if (cookies.length > 0) {
 
 console.log(
   `jiplak: crawling ${origin} at ${config.breakpoints.join(', ')}px` +
+    (session ? ` with the session from ${SESSION}` : '') +
     (cookies.length > 0 ? ` with ${cookies.length} cookie(s)` : ''),
 )
 const captured: Record<string, Bones> = {}
@@ -110,7 +138,7 @@ try {
       // Usually a login wall: the session cookie is missing or expired.
       const landed = new URL(page.url()).pathname
       if (i === 0 && landed !== new URL(origin + route).pathname)
-        console.warn(`  ${route}: redirected to ${landed} (check JIPLAK_COOKIES if this page needs a login)`)
+        console.warn(`  ${route}: redirected to ${landed} (if this page needs a login, run: jiplak login)`)
       if (i === 0 && config.crawl) {
         const hrefs = await page.$$eval('a[href]', as =>
           as.filter(a => !a.closest('[data-jiplak-fixture]')).map(a => (a as HTMLAnchorElement).href),
@@ -152,6 +180,8 @@ try {
     }
   }
 } finally {
+  // Apps rotate refresh tokens while we browse; keep the newest so the next build stays signed in.
+  if (session) await context.storageState({ path: SESSION }).catch(() => {})
   await browser.close()
 }
 

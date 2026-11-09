@@ -221,14 +221,25 @@ maxPages: 200
 <details>
 <summary><b>Halaman saya butuh login.</b></summary>
 
-Login ke aplikasi di browser, salin cookie sesi, lalu kirim lewat environment
-supaya tidak pernah masuk repo:
+Login sekali, lalu build seperti biasa:
 
 ```bash
-JIPLAK_COOKIES="session=isi-cookie-kamu" npx jiplak build
+npx jiplak login   # jendela browser terbuka: login seperti user biasa, lalu tekan Enter
+npx jiplak build   # memakai sesi tersebut
 ```
 
-Beberapa cookie memakai format header Cookie: `"a=1; b=2"`.
+Sesi disimpan di `.jiplak/session.json`; folder `.jiplak` meng-ignore dirinya
+sendiri, jadi tidak pernah masuk git. `build` menyimpan kembali cookie yang
+sudah diperbarui, sehingga sesi tetap berlaku sampai aplikasi mengakhirinya.
+Bila halaman dialihkan ke halaman login, `build` memberi tahu: jalankan
+`jiplak login` lagi.
+
+Tanpa jendela browser (CI)? Kirim cookie lewat environment dengan format
+header Cookie:
+
+```bash
+JIPLAK_COOKIES="session=isi-cookie-kamu; lain=nilai" npx jiplak build
+```
 
 </details>
 
@@ -301,6 +312,7 @@ speed: 1.6s
 
 ```bash
 jiplak init                                  # buat jiplak.yaml dan registry kosong
+jiplak login [url] [--config jiplak.yaml]    # login sekali; build memakai sesinya
 jiplak build [url] [--config jiplak.yaml]    # potret setiap <Skeleton>
 ```
 
